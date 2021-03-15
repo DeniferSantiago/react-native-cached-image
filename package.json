@@ -54,10 +54,11 @@
     "url-parse": "^1.4.1"
   },
   "peerDependencies": {
-    "@react-native-community/netinfo": "^4.6.0",
+    "@react-native-community/netinfo": "^5.9.6",
     "react-native-fs": "^2.16.6"
   },
   "devDependencies": {
+    "@react-native-community/netinfo": "^5.9.6",
     "babel-jest": "^21.0.2",
     "babel-preset-env": "*",
     "babel-preset-react-native": "^4.0.1",
