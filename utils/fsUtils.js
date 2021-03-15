@@ -2,9 +2,7 @@
 
 const _ = require("lodash")
 
-const RNFetchBlob = require("rn-fetch-blob").default
-
-const { fs } = RNFetchBlob
+const { CachesDirectoryPath, exists: existF, mkdir, stat, readdir, unlink, copyFile: copyF, downloadFile: downloadF, moveFile } = require("react-native-fs");
 
 const activeDownloads = {}
 
@@ -18,18 +16,16 @@ function getDirPath(path) {
 
 function ensurePath(path) {
   const dirPath = getDirPath(path)
-  return fs
-    .isDir(dirPath)
+  return exists(dirPath)
     .then(isDir => {
       if (!isDir) {
         return (
-          fs
-            .mkdir(dirPath)
+          mkdir(dirPath)
             // check if dir has indeed been created because
             // there's no exception on incorrect user-defined paths (?)...
-            .then(() => fs.isDir(dirPath))
-            .then(isDir => {
-              if (!isDir) {
+            .then(() => exists(dirPath))
+            .then(exist => {
+              if (!exist) {
                 throw new Error("Invalid cacheLocation")
               }
             })
@@ -45,25 +41,27 @@ function ensurePath(path) {
 
       return Promise.reject(err)
     })
-}
 
-function collectFilesInfo(basePath) {
-  return fs
-    .stat(basePath)
-    .then(info => {
-      if (info.type === "file") {
-        return [info]
-      }
-      return fs.ls(basePath).then(files => {
-        const promises = _.map(files, file => {
-          return collectFilesInfo(`${basePath}/${file}`)
-        })
-        return Promise.all(promises)
-      })
-    })
-    .catch(err => {
-      return []
-    })
+  }
+/**
+ * 
+ * @param {Strinf} basePath 
+ * @returns {Promise<import("react-native-fs").StatResult[]>}
+ */
+async function collectFilesInfo(basePath) {
+  try {
+    const info = await stat(basePath);
+    if (info.isFile()) {
+      return info;
+    }
+    const files = await readdir(basePath);
+    const promises = _.map(files, file => {
+      return collectFilesInfo(`${basePath}/${file}`);
+    });
+    return await Promise.all(promises);
+  } catch (err) {
+    throw [];
+  }
 }
 
 /**
@@ -75,7 +73,7 @@ module.exports = {
    * @returns {String}
    */
   getCacheDir() {
-    return fs.dirs.CacheDir + "/imagesCacheDir"
+    return CachesDirectoryPath + "/imagesCacheDir"
   },
 
   /**
@@ -94,44 +92,36 @@ module.exports = {
       // using a temporary file, if the download is accidentally interrupted, it will not produce a disabled file
       const tmpFile = toFile + ".tmp"
       // create an active download for this file
-      activeDownloads[toFile] = ensurePath(toFile).then(() =>
-        RNFetchBlob.config({
-          path: tmpFile,
-        })
-          .fetch("GET", fromUrl, headers)
-          .then(res => {
-            if (res.respInfo.status === 304) {
-              return Promise.resolve(toFile)
-            }
-            let status = Math.floor(res.respInfo.status / 100)
-            if (status !== 2) {
-              // TODO - log / return error?
-              return Promise.reject()
-            }
-
-            return RNFetchBlob.fs.stat(tmpFile).then(fileStats => {
-              // Verify if the content was fully downloaded!
-              if (res.respInfo.headers["Content-Length"] && res.respInfo.headers["Content-Length"] != fileStats.size) {
-                return Promise.reject()
-              }
-
-              // the download is complete and rename the temporary file
-              return fs.mv(tmpFile, toFile)
-            })
-          })
-          .catch(error => {
-            // cleanup. will try re-download on next CachedImage mount.
-            this.deleteFile(tmpFile)
-            delete activeDownloads[toFile]
-            return Promise.reject("Download failed")
-          })
-          .then(() => {
-            // cleanup
-            this.deleteFile(tmpFile)
-            delete activeDownloads[toFile]
-            return toFile
-          }),
-      )
+      /**@returns {Promise<String>}*/
+      activeDownloads[toFile] = async () => {
+        if(await ensurePath()){
+          var totalSize = 0;
+          const { promise } = downloadF({
+            toFile: tmpFile,
+            fromUrl,
+            headers,
+            begin: val => (totalSize = val.contentLength)
+          });
+          const result = await promise;
+          if(result.statusCode === 304){
+            //!Al parecer no es necesario
+            //await moveFile(tmpFile, toFile); 
+            return toFile;
+          } 
+          let status = Math.floor(result.statusCode / 100)
+          if (status !== 2) {
+            throw new Error("Cannot download image, status code: " + result.statusCode);
+          }
+          const stats = await stat(tmpFile);
+          if(totalSize !== stats.size) {
+            throw new Error("Download failed, the image could not be fully downloaded");
+          }
+          await moveFile(tmpFile, toFile);
+          this.deleteFile(tmpFile)
+          delete activeDownloads[toFile];
+          return toFile;
+        }
+      };
     }
     return activeDownloads[toFile]
   },
@@ -142,14 +132,16 @@ module.exports = {
    * @param filePath
    * @returns {Promise}
    */
-  deleteFile(filePath) {
-    return fs
-      .stat(filePath)
-      .then(res => res && res.type === "file")
-      .then(exists => exists && fs.unlink(filePath))
-      .catch(err => {
-        // swallow error to always resolve
-      })
+  async deleteFile(filePath) {
+    try {
+      const res = await stat(filePath);
+      const exists = res && res.isFile();
+      if(exists){
+        await unlink(filePath);
+      }
+    } catch (err) {
+      throw err;
+    }
   },
 
   /**
@@ -158,8 +150,9 @@ module.exports = {
    * @param toFile
    * @returns {Promise}
    */
-  copyFile(fromFile, toFile) {
-    return ensurePath(toFile).then(() => fs.cp(fromFile, toFile))
+  async copyFile(fromFile, toFile) {
+    await ensurePath(toFile);
+    return await copyF(fromFile, toFile);
   },
 
   /**
@@ -167,40 +160,38 @@ module.exports = {
    * @param dirPath
    * @returns {Promise}
    */
-  cleanDir(dirPath) {
-    return fs
-      .isDir(dirPath)
-      .then(isDir => isDir && fs.unlink(dirPath))
-      .catch(() => {})
-      .then(() => ensurePath(dirPath))
+  async cleanDir(dirPath) {
+    try {
+      const res = await stat(dirPath);
+      if(res.isDirectory()){
+        await unlink(dirPath);
+      }
+    } catch (e) {
+      throw e;
+    }
+    return await ensurePath(dirPath);
   },
 
   /**
    * get info about files in a folder
    * @param dirPath
-   * @returns {Promise.<{file:Array, size:Number}>}
+   * @returns {Promise.<{file:import("react-native-fs").StatResult[], size:Number}>}
    */
-  getDirInfo(dirPath) {
-    return fs
-      .isDir(dirPath)
-      .then(isDir => {
-        if (isDir) {
-          return collectFilesInfo(dirPath)
-        } else {
-          return Promise.reject("Dir does not exists")
-        }
-      })
-      .then(filesInfo => {
-        const files = _.flattenDeep(filesInfo)
-        const size = _.sumBy(files, "size")
-        return {
-          files,
-          size,
-        }
-      })
+  async getDirInfo(dirPath) {
+    const res = await stat(dirPath);
+    if (res.isDirectory()) {
+      const files = collectFilesInfo(dirPath);
+      const size = _.sumBy(files, "size");
+      return {
+        files,
+        size
+      };
+    } else {
+      return Promise.reject("Dir does not exists");
+    }
   },
 
   exists(path) {
-    return fs.exists(path)
+    return existF(path)
   },
 }

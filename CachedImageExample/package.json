@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "android": "node node_modules/react-native/local-cli/cli.js run-android",
     "start": "node node_modules/react-native/local-cli/cli.js start",
     "test": "jest",
     "dev": "yarn && rm -rf ./node_modules/react-native-cached-image; sane 'rsync -av --include='utils/' --include='utils/*.js' --include='*.js' --include='package.json' --exclude='*' ../ ./node_modules/react-native-cached-image' ../ --glob '**/*.js' --glob 'package.json'"
