@@ -1,6 +1,6 @@
 "use strict"
 
-const _ = require("lodash")
+const _ = require("lodash");
 
 const { CachesDirectoryPath, exists: existF, mkdir, stat, readdir, unlink, copyFile: copyF, downloadFile: downloadF, moveFile } = require("react-native-fs");
 
@@ -143,7 +143,7 @@ module.exports = {
   },
   /**
    * remove the contents of dirPath
-   * @param dirPath
+   * @param {String} dirPath
    */
   async cleanDir(dirPath) {
     try {

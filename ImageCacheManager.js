@@ -4,7 +4,7 @@ const _ = require('lodash');
 
 const fsUtils = require('./utils/fsUtils');
 const pathUtils = require('./utils/pathUtils');
-const MemoryCache = require('react-native-clcasher/MemoryCache').default;
+const MemoryCache = require('react-native-async-storage-cache/MemoryCache').default;
 
 module.exports = (defaultOptions = {}, urlCache = MemoryCache, fs = fsUtils, path = pathUtils) => {
 
@@ -22,8 +22,12 @@ module.exports = (defaultOptions = {}, urlCache = MemoryCache, fs = fsUtils, pat
     function isCacheable(url) {
         return _.isString(url) && (_.startsWith(url.toLowerCase(), 'http://') || _.startsWith(url.toLowerCase(), 'https://'));
     }
-
-    function cacheUrl(url, options, getCachedFile) {
+    /**
+     * @param {String} url 
+     * @param {Object} options
+     * @param {(path: String) => Promise<void>} getCachedFile 
+     */
+    async function cacheUrl(url, options, getCachedFile) {
         if (!isCacheable(url)) {
             return Promise.reject(new Error('Url is not cacheable'));
         }
@@ -32,47 +36,34 @@ module.exports = (defaultOptions = {}, urlCache = MemoryCache, fs = fsUtils, pat
         // cacheableUrl contains only the needed query params
         const cacheableUrl = path.getCacheableUrl(url, options.useQueryParamsInCacheKey);
         // note: urlCache may remove the entry if it expired so we need to remove the leftover file manually
-        return urlCache.get(cacheableUrl)
-            .then(fileRelativePath => {
-                if (!fileRelativePath) {
-                    // console.log('ImageCacheManager: url cache miss', cacheableUrl);
-                    throw new Error('URL expired or not in cache');
-                }
-                // console.log('ImageCacheManager: url cache hit', cacheableUrl);
-                const cachedFilePath = `${options.cacheLocation}/${fileRelativePath}`;
-
-                return fs.exists(cachedFilePath)
-                    .then((exists) => {
-                        if (exists) {
-                            return cachedFilePath
-                        } else {
-                            throw new Error('file under URL stored in url cache doesn\'t exsts');
-                        }
-                    });
-            })
-            // url is not found in the cache or is expired
-            .catch(() => {
-                const fileRelativePath = path.getImageRelativeFilePath(cacheableUrl);
-                const filePath = `${options.cacheLocation}/${fileRelativePath}`
-
-                // remove expired file if exists
-                return fs.deleteFile(filePath)
-                    // get the image to cache (download / copy / etc)
-                    .then(() => getCachedFile(filePath))
-                    // add to cache
-                    .then(() => urlCache.set(cacheableUrl, fileRelativePath, options.ttl))
-                    // return filePath
-                    .then(() => filePath);
-            });
+        try {
+            const fileRelativePath = await urlCache.get(cacheableUrl);
+            if (!fileRelativePath) {
+                // console.log('ImageCacheManager: url cache miss', cacheableUrl);
+                throw new Error('URL expired or not in cache');
+            }
+            // console.log('ImageCacheManager: url cache hit', cacheableUrl);
+            const cachedFilePath = `${options.cacheLocation}/${fileRelativePath}`;
+            const exists = await fs.exists(cachedFilePath);
+            if (exists) {
+                return cachedFilePath;
+            } else {
+                throw new Error('file under URL stored in url cache doesn\'t exists');
+            }
+        } catch (e) {
+            const fileRelativePath_1 = path.getImageRelativeFilePath(cacheableUrl);
+            const filePath = `${options.cacheLocation}/${fileRelativePath_1}`;
+            await fs.deleteFile(filePath);
+            getCachedFile(filePath);
+            await urlCache.set(cacheableUrl, fileRelativePath_1, options.ttl);
+            return filePath;
+        }
     }
-
     return {
-
         /**
          * download an image and cache the result according to the given options
-         * @param url
-         * @param options
-         * @returns {Promise}
+         * @param {String} url
+         * @param {Object} options
          */
         downloadAndCacheUrl(url, options = {}) {
             return cacheUrl(
@@ -81,13 +72,11 @@ module.exports = (defaultOptions = {}, urlCache = MemoryCache, fs = fsUtils, pat
                 filePath => fs.downloadFile(url, filePath, options.headers)
             );
         },
-
         /**
          * seed the cache for a specific url with a local file
-         * @param url
-         * @param seedPath
+         * @param {String} url
+         * @param {String} seedPath
          * @param options
-         * @returns {Promise}
          */
         seedAndCacheUrl(url, seedPath, options = {}) {
             return cacheUrl(
@@ -96,37 +85,35 @@ module.exports = (defaultOptions = {}, urlCache = MemoryCache, fs = fsUtils, pat
                 filePath => fs.copyFile(seedPath, filePath)
             );
         },
-
         /**
          * delete the cache entry and file for a given url
-         * @param url
-         * @param options
-         * @returns {Promise}
+         * @param {String} url
+         * @param {Object} options
          */
-        deleteUrl(url, options = {}) {
-            if (!isCacheable(url)) {
-                return Promise.reject(new Error('Url is not cacheable'));
+        async deleteUrl(url, options = {}) {
+            try {
+                if (!isCacheable(url)) {
+                    throw new Error('Url is not cacheable');
+                }
+                _.defaults(options, defaultOptions);
+                const cacheableUrl = path.getCacheableUrl(url, options.useQueryParamsInCacheKey);
+                const filePath = path.getImageFilePath(cacheableUrl, options.cacheLocation);
+                // remove file from cache
+                await urlCache.remove(cacheableUrl);
+                return await fs.deleteFile(filePath);
+            } catch (e) {
+                throw e;
             }
-            _.defaults(options, defaultOptions);
-            const cacheableUrl = path.getCacheableUrl(url, options.useQueryParamsInCacheKey);
-            const filePath = path.getImageFilePath(cacheableUrl, options.cacheLocation);
-            // remove file from cache
-            return urlCache.remove(cacheableUrl)
-                // remove file from disc
-                .then(() => fs.deleteFile(filePath));
         },
-
         /**
          * delete all cached file from the filesystem and cache
-         * @param options
-         * @returns {Promise}
+         * @param {Object} options
          */
-        clearCache(options = {}) {
+        async clearCache(options = {}) {
             _.defaults(options, defaultOptions);
-            return urlCache.flush()
-                .then(() => fs.cleanDir(options.cacheLocation));
+            await urlCache.flush();
+            return await fs.cleanDir(options.cacheLocation);
         },
-
         /**
          * return info about the cache, list of files and the total size of the cache
          * @param options
@@ -135,6 +122,5 @@ module.exports = (defaultOptions = {}, urlCache = MemoryCache, fs = fsUtils, pat
             _.defaults(options, defaultOptions);
             return fs.getDirInfo(options.cacheLocation);
         },
-
     };
 };

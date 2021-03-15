@@ -16,25 +16,26 @@
       "/CachedImageExample/"
     ],
     "modulePathIgnorePatterns": [
-      "/CachedImageExample/"
+      "/CachedImageExample/",
+      "/Example/"
     ],
     "verbose": true
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/kfiroo/react-native-cached-image"
+    "url": "https://github.com/DeniferSantiago/react-native-cached-image"
   },
   "keywords": [
     "react-native",
     "cache",
     "image"
   ],
-  "author": "kfiroo <kfirgolan@gmail.com>",
+  "author": "kfiroo <deniferjose05@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/kfiroo/react-native-cached-image/issues"
+    "url": "https://github.com/DeniferSantiago/react-native-cached-image/issues"
   },
-  "homepage": "https://github.com/kfiroo/react-native-cached-image",
+  "homepage": "https://github.com/DeniferSantiago/react-native-cached-image",
   "files": [
     "index.js",
     "CachedImage.js",
@@ -47,18 +48,16 @@
   ],
   "typings": "./index.d.ts",
   "dependencies": {
-    "crypto-js": "3.1.9-1",
+    "crypto-js": "^4.0.0",
     "lodash": "^4.17.10",
-    "prop-types": "^15.7.2",
-    "react-native-clcasher": "1.0.0",
-    "url-parse": "^1.4.1"
+    "react-native-async-storage-cache": "github:DeniferSantiago/react-native-async-storage-cache",
+    "url-parse": "^1.5.1"
   },
   "peerDependencies": {
     "@react-native-community/netinfo": "^5.9.6",
     "react-native-fs": "^2.16.6"
   },
   "devDependencies": {
-    "react-native-fs": "^2.16.6",
     "@react-native-community/netinfo": "^5.9.6",
     "babel-jest": "^21.0.2",
     "babel-preset-env": "*",
@@ -67,6 +66,7 @@
     "jest-react-native": "^18.0.0",
     "react": "16.4.1",
     "react-native": "^0.64.0",
+    "react-native-fs": "^2.16.6",
     "react-test-renderer": "^15.6.1",
     "regenerator-runtime": "^0.11.0"
   }

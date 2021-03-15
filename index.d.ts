@@ -78,9 +78,21 @@ declare module "react-native-cached-image" {
       size: number
       type: string
     }
+    //From react-native-fs
+    type CacheStat = {
+      name: string | undefined // The name of the item TODO: why is this not documented?
+      path: string // The absolute path to the item
+      size: string // Size in bytes
+      mode: number // UNIX file mode
+      ctime: number // Created date
+      mtime: number // Last modified date
+      originalFilepath: string // In case of content uri this is the pointed file path, otherwise is the same as path
+      isFile: () => boolean // Is the path just a file?
+      isDirectory: () => boolean // Is the path a directory?
+    }
 
     interface PromiseCacheInfo {
-      files: CacheInfoFile[]
+      files: CacheStat[]
       size: number
     }
 
